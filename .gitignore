@@ -64,3 +64,6 @@ Thumbs.db
 # Anthropic Claude 로컬 설정
 .claude/
 .claude
+
+# 테스트
+*.http
