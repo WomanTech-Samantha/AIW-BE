@@ -1,27 +1,56 @@
 const express = require('express');
 const User = require('../models/User');
+const Store = require('../models/Store');
+const Brand = require('../models/Brand');
 const { authenticateToken } = require('../middleware/auth');
-const { success, badRequest, notFound } = require('../utils/response');
+const { success, badRequest, notFound, serverError } = require('../utils/response');
+const { asyncHandler } = require('../middleware/asyncHandler');
+const OnboardingService = require('../services/onboardingService');
 
 const router = express.Router();
 
-// 현재 사용자 정보 조회
-router.get('/me', authenticateToken, async (req, res) => {
+// 현재 사용자의 스토어 URL 조회 (간단한 버전)
+router.get('/me/store-url', authenticateToken, async (req, res) => {
   try {
+    const store = await Store.findOne({ 
+      userId: req.user._id,
+      status: 'active' 
+    });
+    
+    if (!store) {
+      return success(res, {
+        hasStore: false,
+        message: '아직 스토어가 생성되지 않았습니다'
+      });
+    }
+    
+    // 로컬 개발용 URL 반환
+    const storeUrl = `http://localhost:${process.env.FRONTEND_PORT || '5173'}/?store=${store.subdomain}`;
+    
     success(res, {
-      user: req.user
+      hasStore: true,
+      subdomain: store.subdomain,
+      storeName: store.storeName,
+      storeUrl: storeUrl,
+      isPublished: store.isPublished
     });
   } catch (error) {
-    console.error('Get user info error:', error);
+    console.error('Get store URL error:', error);
     res.status(500).json({
       success: false,
       error: {
-        code: 'GET_USER_FAILED',
-        message: '사용자 정보 조회 중 오류가 발생했습니다'
+        code: 'GET_STORE_URL_FAILED',
+        message: '스토어 URL 조회 중 오류가 발생했습니다'
       }
     });
   }
 });
+
+// 현재 사용자 정보 조회 (스토어 정보 포함)
+router.get('/me', authenticateToken, asyncHandler(async (req, res) => {
+  const result = await OnboardingService.getUserWithStoreAndBrand(req.user);
+  success(res, result);
+}));
 
 // 사용자 정보 수정
 router.patch('/me', authenticateToken, async (req, res) => {
@@ -64,6 +93,30 @@ router.patch('/me', authenticateToken, async (req, res) => {
     });
   }
 });
+
+// 온보딩 완료
+router.post('/complete-onboarding', authenticateToken, asyncHandler(async (req, res) => {
+  const result = await OnboardingService.completeOnboarding(req.user._id, req.body);
+  
+  // User 객체에 Store와 Brand 정보를 병합
+  const enrichedUser = {
+    ...result.user.toObject(),
+    storeName: result.store.storeName,
+    subdomain: result.store.subdomain,
+    template: result.store.templateType,
+    theme: result.store.templateColor,
+    business: result.brand.brandName,
+    tagline: result.brand.slogan,
+    brandImageUrl: result.brand.logoUrl,
+    color: result.brand.brandColor
+  };
+
+  success(res, {
+    user: enrichedUser,
+    brand: result.brand,
+    store: result.store
+  }, '온보딩이 완료되었습니다');
+}));
 
 // 사용자 설정 조회
 router.get('/preferences', authenticateToken, async (req, res) => {
