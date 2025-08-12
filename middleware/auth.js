@@ -118,36 +118,10 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
-// 관리자 권한 체크 (나중에 확장용)
-const requireAdmin = async (req, res, next) => {
-  if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      error: {
-        code: 'UNAUTHORIZED',
-        message: '인증이 필요합니다'
-      }
-    });
-  }
-
-  // 관리자 체크 로직 (User 모델에 role 필드 추가 필요)
-  // if (req.user.role !== 'admin') {
-  //   return res.status(403).json({
-  //     success: false,
-  //     error: {
-  //       code: 'FORBIDDEN',
-  //       message: '관리자 권한이 필요합니다'
-  //     }
-  //   });
-  // }
-
-  next();
-};
 
 module.exports = {
   generateTokens,
   authenticateToken,
   verifyRefreshToken,
-  optionalAuth,
-  requireAdmin
+  optionalAuth
 };
