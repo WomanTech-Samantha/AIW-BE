@@ -2,7 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const path = require('path');
 require('dotenv').config();
+
+// 환경변수 검증
+const validateEnv = require('./config/validateEnv');
+validateEnv();
 
 // Database connection
 const connectDB = require('./config/database');
@@ -10,6 +15,11 @@ const connectDB = require('./config/database');
 // Routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const instagramRoutes = require('./routes/instagram');
+const onboardingRoutes = require('./routes/onboarding');
+const storeRoutes = require('./routes/store');
+const productRoutes = require('./routes/products');
+const categoryRoutes = require('./routes/categories');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -17,9 +27,14 @@ const PORT = process.env.PORT || 3001;
 // Connect to MongoDB
 connectDB();
 
-// Middleware
+// Subdomain middleware
+const { parseSubdomain } = require('./middleware/subdomain');
+
+// Middleware  
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: false,
+  originAgentCluster: false
 }));
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
@@ -27,24 +42,55 @@ app.use(cors({
     : true, // 개발 환경에서는 모든 origin 허용
   credentials: true
 }));
+app.use(parseSubdomain);
 app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Static files (for uploaded images)
+app.use('/uploads', express.static('uploads'));
+
+// Serve frontend build files
+const frontendPath = path.join(__dirname, '../AIW-FE/dist');
+app.use(express.static(frontendPath));
+
 // API Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/instagram', instagramRoutes);
+app.use('/api/v1/onboarding', onboardingRoutes);
+app.use('/api/v1/store', storeRoutes);
+app.use('/api/v1/products', productRoutes);
+app.use('/api/v1/categories', categoryRoutes);
 
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({
-    message: 'All-in-WOM Backend API',
-    version: '1.0.0',
-    status: 'OK',
-    endpoints: {
-      auth: '/api/v1/auth',
-      users: '/api/v1/users',
-      health: '/api/v1/health'
+// 404 handler 전에 모든 라우트 처리가 끝나면 React 앱 서빙
+app.get('*', (req, res, next) => {
+  // API 요청인 경우 다음 미들웨어로
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
+  
+  // React 앱의 index.html 서빙
+  const indexPath = path.join(__dirname, '../AIW-FE/dist/index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      // 빌드 파일이 없는 경우 기본 응답
+      res.json({
+        message: 'All-in-WOM Backend API',
+        version: '1.0.0',
+        status: 'OK',
+        endpoints: {
+          auth: '/api/v1/auth',
+          users: '/api/v1/users',
+          instagram: '/api/v1/instagram',
+          onboarding: '/api/v1/onboarding',
+          store: '/api/v1/store',
+          products: '/api/v1/products',
+          categories: '/api/v1/categories',
+          health: '/api/v1/health'
+        },
+        note: 'Frontend build not found. Run npm run build in AIW-FE directory.'
+      });
     }
   });
 });
